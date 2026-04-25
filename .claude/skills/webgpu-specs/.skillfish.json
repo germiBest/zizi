@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "webgpu-specs",
+  "owner": "gfx-rs",
+  "repo": "wgpu",
+  "path": ".claude/skills/webgpu-specs",
+  "branch": "trunk",
+  "sha": "675e5c9a7e404b722795f02b3b2f375fd0d3d04d",
+  "source": "manual"
+}
