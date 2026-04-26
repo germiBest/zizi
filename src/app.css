@@ -1,0 +1,93 @@
+:root {
+  color-scheme: dark;
+  --fg: #e8e8e8;
+  --dim: #8a8a8a;
+  --bg: #0b0b0d;
+  --panel: rgba(20, 20, 24, 0.78);
+  --accent: #7dd3fc;
+  --warn: #f59e0b;
+  --err: #ef4444;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px / 1.4 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+#stage:active {
+  cursor: grabbing;
+}
+
+.hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  border-radius: 8px;
+  font-family:
+    ui-monospace,
+    SF Mono,
+    Menlo,
+    monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  pointer-events: none;
+  min-width: 220px;
+}
+.hud .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.hud .label {
+  color: var(--dim);
+}
+.hud .val {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.diag {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  max-width: 60vw;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-radius: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--dim);
+}
+.diag.err {
+  color: var(--err);
+}
+.diag.warn {
+  color: var(--warn);
+}

@@ -1,0 +1,7 @@
+# Single-package repo. This file exists so pnpm treats zizi as its own
+# workspace root rather than inheriting the one in ~/.
+packages:
+  - '.'
+allowBuilds:
+  esbuild: true
+  '@biomejs/biome': true
