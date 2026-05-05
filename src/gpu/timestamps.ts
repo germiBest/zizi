@@ -1,77 +1,120 @@
+interface PassSlot {
+  readonly name: string;
+  readonly beginIdx: number;
+  readonly endIdx: number;
+  lastMs: number;
+}
+
 export class Timestamps {
   private querySet: GPUQuerySet | null = null;
-  private resolveBuffer: GPUBuffer | null = null;
-  private readbackBuffer: GPUBuffer | null = null;
+  private resolveBuf: GPUBuffer | null = null;
+  private readbackBuf: GPUBuffer | null = null;
+  private readonly slots: PassSlot[] = [];
   private mapping = false;
-  private lastDeltaMs_ = Number.NaN;
+  private capacity = 0;
 
-  constructor(device: GPUDevice, enabled: boolean) {
-    if (!enabled) return;
-    this.querySet = device.createQuerySet({ label: 'ts.queries', type: 'timestamp', count: 2 });
-    this.resolveBuffer = device.createBuffer({
+  constructor(
+    private readonly device: GPUDevice,
+    private readonly enabled_: boolean,
+  ) {}
+
+  get enabled(): boolean {
+    return this.enabled_ && this.querySet !== null;
+  }
+
+  add(name: string): void {
+    if (!this.enabled_) return;
+    const beginIdx = this.slots.length * 2;
+    this.slots.push({ name, beginIdx, endIdx: beginIdx + 1, lastMs: Number.NaN });
+  }
+
+  finalize(): void {
+    if (!this.enabled_ || this.slots.length === 0 || this.querySet) return;
+    this.capacity = this.slots.length * 2;
+    const bytes = this.capacity * 8;
+    this.querySet = this.device.createQuerySet({
+      label: 'ts.queries',
+      type: 'timestamp',
+      count: this.capacity,
+    });
+    this.resolveBuf = this.device.createBuffer({
       label: 'ts.resolve',
-      size: 16,
+      size: bytes,
       usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
     });
-    this.readbackBuffer = device.createBuffer({
+    this.readbackBuf = this.device.createBuffer({
       label: 'ts.readback',
-      size: 16,
+      size: bytes,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     });
   }
 
-  get enabled(): boolean {
-    return this.querySet !== null;
-  }
-
-  get lastMs(): number {
-    return this.lastDeltaMs_;
-  }
-
-  computePassWrites(): GPUComputePassTimestampWrites | undefined {
+  computePassWrites(name: string): GPUComputePassTimestampWrites | undefined {
     if (!this.querySet) return undefined;
-    return {
-      querySet: this.querySet,
-      beginningOfPassWriteIndex: 0,
-      endOfPassWriteIndex: 1,
-    };
+    const slot = this.slots.find((s) => s.name === name);
+    return slot
+      ? {
+          querySet: this.querySet,
+          beginningOfPassWriteIndex: slot.beginIdx,
+          endOfPassWriteIndex: slot.endIdx,
+        }
+      : undefined;
   }
 
   resolve(encoder: GPUCommandEncoder): void {
-    if (!this.querySet || !this.resolveBuffer || !this.readbackBuffer) return;
-    encoder.resolveQuerySet(this.querySet, 0, 2, this.resolveBuffer, 0);
+    if (!this.querySet || !this.resolveBuf || !this.readbackBuf) return;
+    encoder.resolveQuerySet(this.querySet, 0, this.capacity, this.resolveBuf, 0);
     if (!this.mapping) {
-      encoder.copyBufferToBuffer(this.resolveBuffer, 0, this.readbackBuffer, 0, 16);
+      encoder.copyBufferToBuffer(this.resolveBuf, 0, this.readbackBuf, 0, this.capacity * 8);
     }
   }
 
   pollReadback(): void {
-    if (!this.readbackBuffer || this.mapping) return;
+    if (!this.readbackBuf || this.mapping) return;
     this.mapping = true;
-    const buf = this.readbackBuffer;
+    const buf = this.readbackBuf;
     buf
       .mapAsync(GPUMapMode.READ)
       .then(() => {
         const view = new BigUint64Array(buf.getMappedRange());
-        const begin = view[0] ?? 0n;
-        const end = view[1] ?? 0n;
-        this.lastDeltaMs_ = Number(end - begin) / 1_000_000;
+        for (const s of this.slots) {
+          s.lastMs = Number((view[s.endIdx] ?? 0n) - (view[s.beginIdx] ?? 0n)) / 1_000_000;
+        }
         buf.unmap();
       })
       .catch(() => {
-        // device may be lost or buffer destroyed; ignore
+        /* device lost */
       })
       .finally(() => {
         this.mapping = false;
       });
   }
 
+  lastMs(name: string): number {
+    return this.slots.find((s) => s.name === name)?.lastMs ?? Number.NaN;
+  }
+
+  totalMs(): number {
+    let total = 0;
+    let any = false;
+    for (const s of this.slots)
+      if (Number.isFinite(s.lastMs)) {
+        total += s.lastMs;
+        any = true;
+      }
+    return any ? total : Number.NaN;
+  }
+
+  passNames(): readonly string[] {
+    return this.slots.map((s) => s.name);
+  }
+
   destroy(): void {
     this.querySet?.destroy();
-    this.resolveBuffer?.destroy();
-    this.readbackBuffer?.destroy();
+    this.resolveBuf?.destroy();
+    this.readbackBuf?.destroy();
     this.querySet = null;
-    this.resolveBuffer = null;
-    this.readbackBuffer = null;
+    this.resolveBuf = null;
+    this.readbackBuf = null;
   }
 }

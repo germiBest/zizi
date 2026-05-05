@@ -17,6 +17,7 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "dependencies": {
+    "@cornerstonejs/codec-openjph": "^2.4.7",
     "wgpu-matrix": "^3.4.0"
   },
   "devDependencies": {

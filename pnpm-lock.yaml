@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@cornerstonejs/codec-openjph':
+        specifier: ^2.4.7
+        version: 2.4.7
       wgpu-matrix:
         specifier: ^3.4.0
         version: 3.4.2
@@ -89,6 +92,10 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@cornerstonejs/codec-openjph@2.4.7':
+    resolution: {integrity: sha512-qvP4q4JDib7mi9r7LqKOwqz7YZ8gjtDX4ZCezeYf8+eb7MBXCz5uXAMeVF3yz9Axw4XiIMdB/pqXkm8tqCl13w==}
+    engines: {node: '>=0.14'}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -854,6 +861,8 @@ snapshots:
 
   '@biomejs/cli-win32-x64@2.4.14':
     optional: true
+
+  '@cornerstonejs/codec-openjph@2.4.7': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

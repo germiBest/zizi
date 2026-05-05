@@ -9,9 +9,26 @@
   </head>
   <body>
     <main id="app">
-      <canvas id="stage"></canvas>
-      <aside id="hud" class="hud"></aside>
-      <div id="diag" class="diag" role="status" aria-live="polite"></div>
+      <header id="topbar" class="topbar"></header>
+      <div id="grid">
+        <div class="cell">
+          <canvas id="canvas-3d"></canvas>
+          <span class="cell-label">3D · drag · right-drag W/L</span>
+        </div>
+        <div class="cell">
+          <canvas id="canvas-axial"></canvas>
+          <span class="cell-label">axial</span>
+        </div>
+        <div class="cell">
+          <canvas id="canvas-sagittal"></canvas>
+          <span class="cell-label">sagittal</span>
+        </div>
+        <div class="cell">
+          <canvas id="canvas-coronal"></canvas>
+          <span class="cell-label">coronal</span>
+        </div>
+      </div>
+      <aside id="controls" class="controls"></aside>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

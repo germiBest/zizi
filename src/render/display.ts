@@ -1,6 +1,6 @@
 import { handle } from '@/core/types';
 import type { GpuContext } from '@/gpu/context';
-import { createRenderPipeline } from '@/gpu/pipeline';
+import { bglS, bglT, createRenderPipeline, FRAGMENT } from '@/gpu/pipeline';
 import type { FrameContext, Pass, ResourceUse } from './frame';
 import displayWgsl from './shaders/display.wgsl?raw';
 
@@ -15,27 +15,14 @@ export class DisplayPass implements Pass {
   private readonly pipeline: GPURenderPipeline;
   private readonly bgl: GPUBindGroupLayout;
   private readonly sampler: GPUSampler;
-
-  private cachedBindGroup: GPUBindGroup | null = null;
-  private cachedView: GPUTextureView | null = null;
+  private bg: GPUBindGroup | null = null;
+  private cView: GPUTextureView | null = null;
 
   constructor(private readonly ctx: GpuContext) {
     this.bgl = ctx.device.createBindGroupLayout({
       label: 'display.bgl',
-      entries: [
-        {
-          binding: 0,
-          visibility: GPUShaderStage.FRAGMENT,
-          texture: { sampleType: 'float', viewDimension: '2d' },
-        },
-        {
-          binding: 1,
-          visibility: GPUShaderStage.FRAGMENT,
-          sampler: { type: 'filtering' },
-        },
-      ],
+      entries: [bglT(0, '2d', FRAGMENT), bglS(1, FRAGMENT)],
     });
-
     this.pipeline = createRenderPipeline(ctx.device, {
       label: 'display.pipeline',
       code: displayWgsl,
@@ -43,9 +30,7 @@ export class DisplayPass implements Pass {
       fragmentEntry: 'fs_main',
       bindGroupLayouts: [this.bgl],
       targetFormat: ctx.format,
-      primitive: { topology: 'triangle-list' },
     });
-
     this.sampler = ctx.device.createSampler({
       label: 'display.sampler',
       magFilter: 'linear',
@@ -54,8 +39,8 @@ export class DisplayPass implements Pass {
   }
 
   record(encoder: GPUCommandEncoder, frame: FrameContext): void {
-    if (this.cachedView !== frame.storageView) {
-      this.cachedBindGroup = this.ctx.device.createBindGroup({
+    if (this.cView !== frame.storageView) {
+      this.bg = this.ctx.device.createBindGroup({
         label: 'display.bg',
         layout: this.bgl,
         entries: [
@@ -63,9 +48,8 @@ export class DisplayPass implements Pass {
           { binding: 1, resource: this.sampler },
         ],
       });
-      this.cachedView = frame.storageView;
+      this.cView = frame.storageView;
     }
-
     const pass = encoder.beginRenderPass({
       label: 'display.pass',
       colorAttachments: [
@@ -78,7 +62,7 @@ export class DisplayPass implements Pass {
       ],
     });
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.cachedBindGroup);
+    pass.setBindGroup(0, this.bg);
     pass.draw(3, 1, 0, 0);
     pass.end();
   }

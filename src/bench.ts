@@ -1,12 +1,14 @@
-import { buildEnv, buildRecord, downloadBenchRecord } from '@/bench/recorder';
+import { buildEnv, buildRecord, downloadBenchRecord, type GpuTimesMap } from '@/bench/recorder';
 import { OrbitCamera } from '@/camera/orbit';
 import { generatePhantom } from '@/dicom/phantom';
 import { GpuContext } from '@/gpu/context';
-import { Swapchain } from '@/gpu/swapchain';
+import { Surface } from '@/gpu/surface';
 import { DisplayPass } from '@/render/display';
 import { RaycastPass } from '@/render/raycaster';
 import { Renderer } from '@/render/renderer';
+import { TransferFnTexture } from '@/render/transfer-fn';
 import { uploadVolume } from '@/render/volume-upload';
+import { AppState } from '@/state/app-state';
 
 const WARMUP = 30;
 const FRAMES = 60;
@@ -16,68 +18,79 @@ async function main(): Promise<void> {
   const log = document.querySelector<HTMLElement>('#log');
   if (!canvas || !log) throw new Error('bench: missing #stage or #log');
 
-  appendLog(log, 'booting GPU…');
+  const append = (line: string) => {
+    log.textContent = `${log.textContent ?? ''}${line}\n`;
+  };
 
-  const swapchain = new Swapchain(canvas, { maxDpr: 1 });
-  const ctx = await GpuContext.create({ canvas });
+  append('booting GPU…');
+  const ctx = await GpuContext.create();
+  append(`adapter: ${ctx.adapterInfo.vendor} ${ctx.adapterInfo.architecture}`);
 
-  appendLog(log, `adapter: ${ctx.adapterInfo.vendor} ${ctx.adapterInfo.architecture}`);
-
-  const volume = generatePhantom({ size: 64 });
-  const volTex = uploadVolume(ctx, volume);
+  const surface = new Surface(ctx, canvas, { maxDpr: 1, autoResize: false });
+  const volTex = uploadVolume(ctx, generatePhantom({ size: 64 }));
+  const state = new AppState();
+  const tfTex = new TransferFnTexture(ctx);
+  tfTex.upload(
+    state.tf,
+    (state.wl.center as number) - (state.wl.width as number) / 2,
+    (state.wl.center as number) + (state.wl.width as number) / 2,
+  );
 
   const camera = new OrbitCamera(canvas, { distance: 2.5 });
-  const renderer = new Renderer(ctx, swapchain, [
-    new RaycastPass(ctx, volTex, camera),
+  const renderer = new Renderer(ctx, surface, [
+    new RaycastPass(ctx, volTex, state, tfTex),
     new DisplayPass(ctx),
   ]);
 
-  appendLog(log, `warmup: ${WARMUP} frames…`);
+  append(`warmup: ${WARMUP} frames…`);
   for (let i = 0; i < WARMUP; i++) {
-    renderer.tick(1 / 60);
+    camera.tick(1 / 60);
+    renderer.tick(1 / 60, camera.snapshot());
     await ctx.queue.onSubmittedWorkDone();
   }
 
-  appendLog(log, `recording: ${FRAMES} frames…`);
+  append(`recording: ${FRAMES} frames…`);
+  const passNames = renderer.timestamps.passNames();
+  const gpuTimes: Record<string, number[]> = Object.fromEntries(passNames.map((n) => [n, []]));
   const frameTimesMs: number[] = [];
   for (let i = 0; i < FRAMES; i++) {
     camera.tick(1 / 60);
-    renderer.tick(1 / 60);
+    renderer.tick(1 / 60, camera.snapshot());
     await ctx.queue.onSubmittedWorkDone();
-    if (Number.isFinite(renderer.lastFrameMs)) {
-      frameTimesMs.push(renderer.lastFrameMs);
+    if (Number.isFinite(renderer.lastFrameMs)) frameTimesMs.push(renderer.lastFrameMs);
+    for (const name of passNames) {
+      const ms = renderer.timestamps.lastMs(name);
+      if (Number.isFinite(ms)) gpuTimes[name]!.push(ms);
     }
   }
 
   const env = buildEnv({
     adapter: ctx.adapterInfo,
-    canvas: {
-      width: canvas.width,
-      height: canvas.height,
-      dpr: globalThis.devicePixelRatio ?? 1,
-    },
+    canvas: { width: canvas.width, height: canvas.height, dpr: globalThis.devicePixelRatio ?? 1 },
+    transferKind: 'raw',
+    pyramidLevels: 1,
+    manifestSchema: 'zizi-volume/v1',
   });
+  const anyGpu = Object.values(gpuTimes).some((a) => a.length > 0);
+  const gpuMap: GpuTimesMap | null = anyGpu ? gpuTimes : null;
 
   const record = buildRecord({
     scenario: 'smoke',
     warmupFrames: WARMUP,
     frameTimesMs,
-    gpuTimesMs: null,
+    gpuTimesMs: gpuMap,
     env,
+    ttfpMs: renderer.ttfpMs,
   });
 
-  appendLog(log, '\n--- BenchRecord (zizi-bench/v1) ---\n');
-  appendLog(log, JSON.stringify(record, null, 2));
+  append('\n--- BenchRecord (zizi-bench/v2) ---\n');
+  append(JSON.stringify(record, null, 2));
   console.info('[zizi/bench] record', record);
 
   (globalThis as { __zizi_bench__?: unknown }).__zizi_bench__ = {
     record,
     download: () => downloadBenchRecord(record),
   };
-}
-
-function appendLog(el: HTMLElement, line: string): void {
-  el.textContent = `${el.textContent ?? ''}${line}\n`;
 }
 
 main().catch((e) => {

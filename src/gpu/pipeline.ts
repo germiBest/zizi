@@ -1,3 +1,36 @@
+export const COMPUTE = 0x4 satisfies GPUShaderStageFlags;
+export const FRAGMENT = 0x2 satisfies GPUShaderStageFlags;
+
+export const bglU = (binding: number, vis = COMPUTE): GPUBindGroupLayoutEntry => ({
+  binding,
+  visibility: vis,
+  buffer: { type: 'uniform' },
+});
+export const bglT = (
+  binding: number,
+  viewDimension: GPUTextureViewDimension = '2d',
+  vis = COMPUTE,
+  sampleType: GPUTextureSampleType = 'float',
+): GPUBindGroupLayoutEntry => ({
+  binding,
+  visibility: vis,
+  texture: { sampleType, viewDimension },
+});
+export const bglS = (
+  binding: number,
+  vis = COMPUTE,
+  type: GPUSamplerBindingType = 'filtering',
+): GPUBindGroupLayoutEntry => ({ binding, visibility: vis, sampler: { type } });
+export const bglSO = (
+  binding: number,
+  format: GPUTextureFormat = 'rgba8unorm',
+  vis = COMPUTE,
+): GPUBindGroupLayoutEntry => ({
+  binding,
+  visibility: vis,
+  storageTexture: { access: 'write-only', format, viewDimension: '2d' },
+});
+
 export interface ComputePipelineSpec {
   readonly label: string;
   readonly code: string;

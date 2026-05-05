@@ -6,10 +6,12 @@ requires-python = ">=3.11"
 dependencies = [
   "numpy>=2.0",
   "pydicom>=3.0",
+  "scipy>=1.13",
 ]
 
 [project.optional-dependencies]
 itk = ["SimpleITK>=2.4"]
+htj2k-test = ["imagecodecs>=2024.1"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

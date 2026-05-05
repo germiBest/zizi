@@ -7,6 +7,11 @@ export interface ResourceUse {
   readonly access: Access;
 }
 
+export interface CameraSnapshot {
+  readonly view: Float32Array;
+  readonly position: Float32Array;
+}
+
 export interface FrameContext {
   readonly time: number;
   readonly dt: number;
@@ -14,6 +19,8 @@ export interface FrameContext {
   readonly height: number;
   readonly storageView: GPUTextureView;
   readonly canvasView: GPUTextureView;
+  readonly camera: CameraSnapshot;
+  timestampWrites(passName: string): GPUComputePassTimestampWrites | undefined;
 }
 
 export interface Pass {

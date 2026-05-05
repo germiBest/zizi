@@ -1,45 +1,49 @@
 import type { GpuContext } from '@/gpu/context';
 import { createTexture, type GpuTexture } from '@/gpu/resources';
-import type { Swapchain } from '@/gpu/swapchain';
+import type { Surface } from '@/gpu/surface';
 import { Timestamps } from '@/gpu/timestamps';
-import type { FrameContext, Pass } from './frame';
+import type { CameraSnapshot, FrameContext, Pass } from './frame';
 
 export class Renderer {
   readonly timestamps: Timestamps;
-
   private storageTex: GpuTexture | null = null;
   private storageView: GPUTextureView | null = null;
   private lastW = 0;
   private lastH = 0;
   private time = 0;
   private disposed = false;
+  private finalized = false;
 
   lastFrameMs = Number.NaN;
-  lastGpuMs = Number.NaN;
+  ttfpMs: number | null = null;
 
   constructor(
     readonly ctx: GpuContext,
-    readonly swapchain: Swapchain,
+    readonly surface: Surface,
     readonly passes: Pass[],
   ) {
     this.timestamps = new Timestamps(ctx.device, ctx.caps.hasTimestampQuery);
+    for (const p of passes) this.timestamps.add(p.name);
   }
 
-  tick(dt: number): void {
-    if (this.disposed) return;
-    if (!this.ctx.registry.isAlive) return;
+  get lastGpuMs(): number {
+    return this.timestamps.totalMs();
+  }
+
+  tick(dt: number, snapshot: CameraSnapshot): void {
+    if (this.disposed || !this.ctx.registry.isAlive) return;
+    if (!this.finalized) {
+      this.timestamps.finalize();
+      this.finalized = true;
+    }
     const t0 = performance.now();
     this.time += dt;
 
-    const w = this.swapchain.width;
-    const h = this.swapchain.height;
-    if (w !== this.lastW || h !== this.lastH || !this.storageView) {
-      this.recreateStorage(w, h);
-    }
+    const w = this.surface.width;
+    const h = this.surface.height;
+    if (w !== this.lastW || h !== this.lastH || !this.storageView) this.recreateStorage(w, h);
 
-    const canvasTex = this.ctx.canvasCtx.getCurrentTexture();
-    const canvasView = canvasTex.createView({ label: 'frame.canvasView' });
-
+    const canvasView = this.surface.getCurrentTexture().createView({ label: 'frame.canvasView' });
     const frame: FrameContext = {
       time: this.time,
       dt,
@@ -47,18 +51,18 @@ export class Renderer {
       height: h,
       storageView: this.storageView!,
       canvasView,
+      camera: snapshot,
+      timestampWrites: (name) => this.timestamps.computePassWrites(name),
     };
 
     if (__DEV__) {
       this.ctx.device.pushErrorScope('validation');
       this.ctx.device.pushErrorScope('out-of-memory');
     }
-
     const encoder = this.ctx.device.createCommandEncoder({ label: 'frame.encoder' });
     for (const pass of this.passes) pass.record(encoder, frame);
     this.timestamps.resolve(encoder);
     this.ctx.queue.submit([encoder.finish()]);
-
     if (__DEV__) {
       void this.ctx.device.popErrorScope().then((oom) => {
         if (oom) console.error('[renderer.tick] OOM:', oom.message);
@@ -67,10 +71,9 @@ export class Renderer {
         if (val) console.error('[renderer.tick] validation:', val.message);
       });
     }
-
     this.timestamps.pollReadback();
-    this.lastGpuMs = this.timestamps.lastMs;
     this.lastFrameMs = performance.now() - t0;
+    if (this.ttfpMs === null) this.ttfpMs = performance.now();
   }
 
   async waitIdle(): Promise<void> {

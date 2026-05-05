@@ -1,10 +1,11 @@
 import { mulberry32 } from '@/core/stats';
+import type { GpuTimesMap } from './recorder';
 import type { Scenario } from './scenarios';
 
 export interface ScenarioResult {
   readonly scenario: Scenario;
   readonly frameTimesMs: number[];
-  readonly gpuTimesMs: number[] | null;
+  readonly gpuTimesMs: GpuTimesMap | null;
 }
 
 // TODO(week 7): real scenarios drive Renderer.tick() in a loop, awaiting
