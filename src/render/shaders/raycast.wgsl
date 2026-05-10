@@ -10,7 +10,7 @@
 //   vec4<f32>   volBoundsMin  off 80  bytes 16
 //   vec4<f32>   volBoundsMax  off 96  bytes 16
 //   vec4<f32>   params        off 112 bytes 16  (stepCount, density, dtRef, alphaMax)
-//   vec4<f32>   wl            off 128 bytes 16  (level, width, _, _)
+//   vec4<f32>   wl            off 128 bytes 16  (lowVisible, invWidth, upperVisible, lowerVisible)
 //   vec4<f32>   mode          off 144 bytes 16  (renderMode, gradientFlag, _, _)
 
 struct RaycastUniforms {
@@ -101,24 +101,21 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let extent = bMax - bMin;
   let invExtent = 1.0 / extent;
 
-  let level = uni.wl.x;
-  let widthRaw = uni.wl.y;
-  let widthSafe = max(widthRaw, 1.0);
-  let lowVisible = level - widthRaw * 0.5;
+  let lowVisible = uni.wl.x;
+  let invWidth = uni.wl.y;
+  let upperVisible = uni.wl.z;
+  let lowerVisible = uni.wl.w;
 
   let renderMode = u32(uni.mode.x);
   let useGradient = uni.mode.y > 0.5;
   let viewDir = -rd;
 
   if (renderMode == 0u) {
-    // ============================================================
-    // DVR — front-to-back compositing
-    // ============================================================
     for (var i: u32 = 0u; i < stepCount; i = i + 1u) {
       let pos = ro + rd * (tNear + dt * (f32(i) + 0.5));
       let n = clamp((pos - bMin) * invExtent, vec3<f32>(0.0), vec3<f32>(1.0));
       let hu = sampleHU(n);
-      let normWl = clamp((hu - lowVisible) / widthSafe, 0.0, 1.0);
+      let normWl = clamp((hu - lowVisible) * invWidth, 0.0, 1.0);
       var rgba = textureSampleLevel(tf, smp, vec2<f32>(normWl, 0.5), 0.0);
 
       if (useGradient && rgba.a > 0.001) {
@@ -138,9 +135,6 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
       if (color.a > alphaMax) { break; }
     }
   } else {
-    // ============================================================
-    // Projection modes — accumulate scalar HU, then W/L → TF once
-    // ============================================================
     var acc: f32 = 0.0;
     if (renderMode == 1u) { acc = -1.0e30; }
     else if (renderMode == 2u) { acc = 1.0e30; }
@@ -149,15 +143,21 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let pos = ro + rd * (tNear + dt * (f32(i) + 0.5));
       let n = clamp((pos - bMin) * invExtent, vec3<f32>(0.0), vec3<f32>(1.0));
       let hu = sampleHU(n);
-      if (renderMode == 1u) { acc = max(acc, hu); }
-      else if (renderMode == 2u) { acc = min(acc, hu); }
-      else { acc = acc + hu; }
+      if (renderMode == 1u) {
+        acc = max(acc, hu);
+        if (acc >= upperVisible) { break; }
+      } else if (renderMode == 2u) {
+        acc = min(acc, hu);
+        if (acc <= lowerVisible) { break; }
+      } else {
+        acc = acc + hu;
+      }
     }
 
     var finalHU = acc;
     if (renderMode == 3u) { finalHU = acc / f32(stepCount); }
 
-    let normWl = clamp((finalHU - lowVisible) / widthSafe, 0.0, 1.0);
+    let normWl = clamp((finalHU - lowVisible) * invWidth, 0.0, 1.0);
     let rgba = textureSampleLevel(tf, smp, vec2<f32>(normWl, 0.5), 0.0);
     color = vec4<f32>(rgba.rgb, 1.0);
   }

@@ -12,7 +12,8 @@ import utilsWgsl from './shaders/utils.wgsl?raw';
 import type { TransferFnTexture } from './transfer-fn';
 import type { VolumeTextureBundle } from './volume-upload';
 
-const STEP_COUNT = 384;
+const STEP_COUNT_DVR = 384;
+const STEP_COUNT_PROJ = 256;
 const DENSITY = 1.0;
 const ALPHA_MAX = 0.99;
 const FOV_Y = (60 * Math.PI) / 180;
@@ -138,18 +139,24 @@ export class RaycastPass implements Pass {
     u[26] = hz;
     u[27] = 0;
 
-    u[28] = STEP_COUNT;
+    const mode = this.state.renderMode;
+    u[28] = mode === 'dvr' ? STEP_COUNT_DVR : STEP_COUNT_PROJ;
     u[29] = DENSITY;
     u[30] = 1 / Math.max(w, h, d);
     u[31] = ALPHA_MAX;
 
-    u[32] = this.state.wl.center as number;
-    u[33] = this.state.wl.width as number;
-    u[34] = 0;
-    u[35] = 0;
+    const center = this.state.wl.center as number;
+    const widthRaw = this.state.wl.width as number;
+    const widthSafe = Math.max(widthRaw, 1);
+    const lowVisible = center - widthRaw * 0.5;
+    const upperVisible = center + widthRaw * 0.5;
+    u[32] = lowVisible;
+    u[33] = 1 / widthSafe;
+    u[34] = upperVisible;
+    u[35] = lowVisible;
 
-    u[36] = RENDER_MODE_TO_ID[this.state.renderMode];
-    u[37] = this.state.gradientShading && this.state.renderMode === 'dvr' ? 1 : 0;
+    u[36] = RENDER_MODE_TO_ID[mode];
+    u[37] = this.state.gradientShading && mode === 'dvr' ? 1 : 0;
     u[38] = 0;
     u[39] = 0;
   }
