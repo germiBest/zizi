@@ -4,6 +4,7 @@ import { generatePhantom } from '@/dicom/phantom';
 import { GpuContext } from '@/gpu/context';
 import { Surface } from '@/gpu/surface';
 import { DisplayPass } from '@/render/display';
+import { MinMaxGrid } from '@/render/minmax-grid';
 import { RaycastPass } from '@/render/raycaster';
 import { Renderer } from '@/render/renderer';
 import { TransferFnTexture } from '@/render/transfer-fn';
@@ -37,8 +38,10 @@ async function main(): Promise<void> {
   );
 
   const camera = new OrbitCamera(canvas, { distance: 2.5 });
+  const minmax = new MinMaxGrid(ctx, volTex);
+  minmax.rebuildFor(volTex);
   const renderer = new Renderer(ctx, surface, [
-    new RaycastPass(ctx, volTex, state, tfTex),
+    new RaycastPass(ctx, volTex, state, tfTex, minmax),
     new DisplayPass(ctx),
   ]);
 

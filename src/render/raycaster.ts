@@ -7,6 +7,7 @@ import { createBuffer, type GpuBuffer } from '@/gpu/resources';
 import { composeShader } from '@/gpu/shader';
 import { type AppState, RENDER_MODE_TO_ID } from '@/state/app-state';
 import type { FrameContext, Pass, ResourceUse } from './frame';
+import type { MinMaxGrid } from './minmax-grid';
 import raycastWgsl from './shaders/raycast.wgsl?raw';
 import utilsWgsl from './shaders/utils.wgsl?raw';
 import type { TransferFnTexture } from './transfer-fn';
@@ -24,12 +25,14 @@ const UNIFORM_FLOATS = 40;
 const STORAGE_OUT = handle('color.storage');
 const VOLUME_IN = handle('volume.r16float');
 const TF_IN = handle('tf.lut');
+const MINMAX_IN = handle('minmax.grid');
 
 export class RaycastPass implements Pass {
   readonly name = 'raycast';
   readonly reads: readonly ResourceUse[] = [
     { handle: VOLUME_IN, access: 'read' },
     { handle: TF_IN, access: 'read' },
+    { handle: MINMAX_IN, access: 'read' },
   ];
   readonly writes: readonly ResourceUse[] = [{ handle: STORAGE_OUT, access: 'write' }];
 
@@ -44,16 +47,18 @@ export class RaycastPass implements Pass {
   private cView: GPUTextureView | null = null;
   private cTf: GPUTextureView | null = null;
   private cVol: GPUTextureView | null = null;
+  private cMm: GPUTextureView | null = null;
 
   constructor(
     private readonly ctx: GpuContext,
     private readonly volume: VolumeTextureBundle,
     private readonly state: AppState,
     private readonly tfTex: TransferFnTexture,
+    private readonly minmax: MinMaxGrid,
   ) {
     this.bgl = ctx.device.createBindGroupLayout({
       label: 'raycast.bgl',
-      entries: [bglU(0), bglT(1, '3d'), bglT(2, '2d'), bglS(3), bglSO(4)],
+      entries: [bglU(0), bglT(1, '3d'), bglT(2, '2d'), bglS(3), bglSO(4), bglT(5, '3d')],
     });
     this.pipeline = createComputePipeline(ctx.device, {
       label: 'raycast.compute',
@@ -75,7 +80,8 @@ export class RaycastPass implements Pass {
     if (
       this.cView !== frame.storageView ||
       this.cTf !== this.tfTex.view ||
-      this.cVol !== this.volume.view
+      this.cVol !== this.volume.view ||
+      this.cMm !== this.minmax.view
     ) {
       this.bg = this.ctx.device.createBindGroup({
         label: 'raycast.bg',
@@ -86,11 +92,13 @@ export class RaycastPass implements Pass {
           { binding: 2, resource: this.tfTex.view },
           { binding: 3, resource: this.tfTex.sampler },
           { binding: 4, resource: frame.storageView },
+          { binding: 5, resource: this.minmax.view },
         ],
       });
       this.cView = frame.storageView;
       this.cTf = this.tfTex.view;
       this.cVol = this.volume.view;
+      this.cMm = this.minmax.view;
     }
 
     const writes = frame.timestampWrites(this.name);

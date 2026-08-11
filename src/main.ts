@@ -5,6 +5,7 @@ import { isV2Manifest } from '@/dicom/types';
 import { GpuContext } from '@/gpu/context';
 import { Surface } from '@/gpu/surface';
 import { DisplayPass } from '@/render/display';
+import { MinMaxGrid } from '@/render/minmax-grid';
 import { MprPass } from '@/render/mpr';
 import { RaycastPass } from '@/render/raycaster';
 import { Renderer } from '@/render/renderer';
@@ -60,6 +61,10 @@ async function main(): Promise<void> {
   const tfTex = new TransferFnTexture(ctx);
   uploadTfForState(tfTex, state);
 
+  const minmax = new MinMaxGrid(ctx, bundle);
+  minmax.rebuildFor(bundle);
+  let seenBundleView = bundle.view;
+
   const camera = new OrbitCamera(threeDCanvas, { distance: 2.5 });
   camera.setAutoSpin(state.autoSpinRps);
 
@@ -75,7 +80,7 @@ async function main(): Promise<void> {
 
   const renderers: Renderer[] = [
     new Renderer(ctx, surfaces.threeD, [
-      new RaycastPass(ctx, bundle, state, tfTex),
+      new RaycastPass(ctx, bundle, state, tfTex, minmax),
       new DisplayPass(ctx),
     ]),
     new Renderer(ctx, surfaces.axial, [
@@ -134,6 +139,10 @@ async function main(): Promise<void> {
     const dt = (now - last) / 1000;
     last = now;
 
+    if (bundle.view !== seenBundleView) {
+      minmax.rebuildFor(bundle);
+      seenBundleView = bundle.view;
+    }
     if (state.cameraResetCount !== seenReset) camera.reset(), (seenReset = state.cameraResetCount);
     if (state.autoSpinRps !== seenSpin)
       camera.setAutoSpin(state.autoSpinRps), (seenSpin = state.autoSpinRps);

@@ -28,6 +28,7 @@ struct RaycastUniforms {
 @group(0) @binding(2) var tf: texture_2d<f32>;
 @group(0) @binding(3) var smp: sampler;
 @group(0) @binding(4) var output: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(5) var minmaxGrid: texture_3d<f32>;
 
 fn unprojectRay(uv: vec2<f32>) -> vec3<f32> {
   let ndc = vec4<f32>(uv * 2.0 - vec2<f32>(1.0), 1.0, 1.0);
@@ -110,10 +111,25 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let useGradient = uni.mode.y > 0.5;
   let viewDir = -rd;
 
+  let cellDimsU = textureDimensions(minmaxGrid);
+  let cellDims = vec3<f32>(cellDimsU);
+  let cellWorldSize = (bMax - bMin) / cellDims;
+  let cellMinAxis = min(min(cellWorldSize.x, cellWorldSize.y), cellWorldSize.z);
+  let skipSteps = max(u32(floor(cellMinAxis / dt)), 1u);
+  let cellMaxIdx = vec3<i32>(cellDimsU) - vec3<i32>(1, 1, 1);
+
   if (renderMode == 0u) {
     for (var i: u32 = 0u; i < stepCount; i = i + 1u) {
       let pos = ro + rd * (tNear + dt * (f32(i) + 0.5));
       let n = clamp((pos - bMin) * invExtent, vec3<f32>(0.0), vec3<f32>(1.0));
+
+      let cellCoord = clamp(vec3<i32>(n * cellDims), vec3<i32>(0, 0, 0), cellMaxIdx);
+      let mm = textureLoad(minmaxGrid, cellCoord, 0);
+      if (mm.g < lowVisible) {
+        i = i + skipSteps - 1u;
+        continue;
+      }
+
       let hu = sampleHU(n);
       let normWl = clamp((hu - lowVisible) * invWidth, 0.0, 1.0);
       var rgba = textureSampleLevel(tf, smp, vec2<f32>(normWl, 0.5), 0.0);
@@ -142,6 +158,18 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     for (var i: u32 = 0u; i < stepCount; i = i + 1u) {
       let pos = ro + rd * (tNear + dt * (f32(i) + 0.5));
       let n = clamp((pos - bMin) * invExtent, vec3<f32>(0.0), vec3<f32>(1.0));
+
+      if (renderMode != 3u) {
+        let cellCoord = clamp(vec3<i32>(n * cellDims), vec3<i32>(0, 0, 0), cellMaxIdx);
+        let mm = textureLoad(minmaxGrid, cellCoord, 0);
+        let canSkip = (renderMode == 1u && mm.g < lowVisible) ||
+                      (renderMode == 2u && mm.r > upperVisible);
+        if (canSkip) {
+          i = i + skipSteps - 1u;
+          continue;
+        }
+      }
+
       let hu = sampleHU(n);
       if (renderMode == 1u) {
         acc = max(acc, hu);
